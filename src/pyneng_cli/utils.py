@@ -7,10 +7,11 @@ import stat
 import subprocess
 import sys
 from collections import defaultdict
+from collections.abc import Sequence
 from pathlib import Path
 from platform import system as system_name
 from shlex import split as sh_split
-from typing import Sequence
+from typing import Literal, overload
 
 import click
 
@@ -19,16 +20,17 @@ from pyneng_cli import (
     DB_TASK_DIRS,
     LANG_TASKS_LOCAL_REPO,
     LANG_TASKS_URL,
+    TASK_DIRS,
     TASKS_LOCAL_REPO,
     TASKS_URL,
-    TASK_DIRS,
 )
 from pyneng_cli.exceptions import PynengError
 
+# --------------------------------------------------------------------------- #
+#  Цветовые «прикраси»
+# --------------------------------------------------------------------------- #
 
-# --------------------------------------------------------------------------- #
-#  Цветные «украшения»
-# --------------------------------------------------------------------------- #
+
 def red(msg: str) -> str:
     """Вернуть строку, окрашенную в **красный**."""
     return click.style(msg, fg="red")
@@ -42,9 +44,11 @@ def green(msg: str) -> str:
 # --------------------------------------------------------------------------- #
 #  Вспомогательные утилиты
 # --------------------------------------------------------------------------- #
+
+
 def remove_readonly(func, path, _):
     """
-    Для Windows: позволяет `shutil.rmtree` удалять read-only файлы
+    Windows-хак: позволяет ``shutil.rmtree`` удалять read-only файлы
     (например, внутри .git).
     """
     os.chmod(path, stat.S_IWRITE)
@@ -53,31 +57,70 @@ def remove_readonly(func, path, _):
 
 def _to_argv(command: str | Sequence[str]) -> list[str]:
     """
-    Гарантировать, что в `subprocess` пойдём со *списком строк*:
+    Гарантировать, что в ``subprocess`` пойдёт *list[str]*.
 
-    * str  → разбиваем через `shlex.split`
-    * list/tuple → возвращаем как есть
+    * str  → ``shlex.split``
+    * list/tuple → оставить как есть
     """
     return sh_split(command) if isinstance(command, str) else list(command)
 
 
-def call_command(  # noqa: D401 (краткое описание)
+# ======== перегрузки для mypy =================================================
+
+
+@overload
+def call_command(
+    command: str | Sequence[str],
+    *,
+    verbose: bool = ...,
+    return_stdout: Literal[True],
+    return_stderr: Literal[False] = ...,
+) -> str:  # только stdout
+    ...
+
+
+@overload
+def call_command(
+    command: str | Sequence[str],
+    *,
+    verbose: bool = ...,
+    return_stdout: Literal[False] = ...,
+    return_stderr: Literal[True],
+) -> tuple[int, str]:  # returncode + stderr
+    ...
+
+
+@overload
+def call_command(
+    command: str | Sequence[str],
+    *,
+    verbose: bool = ...,
+    return_stdout: Literal[False] = ...,
+    return_stderr: Literal[False] = ...,
+) -> int:  # только код возврата
+    ...
+
+
+# ======== реализация =========================================================
+
+
+def call_command(
     command: str | Sequence[str],
     *,
     verbose: bool = True,
     return_stdout: bool = False,
     return_stderr: bool = False,
-) -> int | subprocess.CompletedProcess[str]:
+) -> int | str | tuple[int, str]:
     """
-    Выполнить *command* через `subprocess.run`.
+    Выполнить *command* через :pyfunc:`subprocess.run`.
 
-    На Windows иногда нужен `shell=True` (bat/cmd-файлы).
-    На других ОС вызываем без оболочки, чтобы не ловить Bandit B602.
+    На Windows бат/cmd-файлы требуют ``shell=True`` (ловим это вручную),
+    на остальных ОС работаем без оболочки (избегаем Bandit B602).
     """
     argv: list[str] = _to_argv(command)
     needs_shell = sys.platform.startswith("win") and isinstance(command, str)
 
-    result = subprocess.run(  # nosec B602 – см. needs_shell выше
+    completed: subprocess.CompletedProcess[str] = subprocess.run(  # nosec B603
         argv if not needs_shell else command,  # type: ignore[arg-type]
         shell=needs_shell,
         encoding="utf-8",
@@ -85,30 +128,32 @@ def call_command(  # noqa: D401 (краткое описание)
         stderr=subprocess.PIPE,
     )
 
-    if return_stdout or return_stderr:
-        return result
+    if return_stdout:
+        return completed.stdout
+    if return_stderr:
+        return completed.returncode, completed.stderr
 
     if verbose:
         print("#" * 20, command)
-        if result.stdout:
-            print(result.stdout)
-        if result.stderr:
-            print(result.stderr)
+        if completed.stdout:
+            print(completed.stdout)
+        if completed.stderr:
+            print(completed.stderr)
 
-    return result.returncode
+    return completed.returncode
 
 
-# Имя `run_command` оставляем для совместимости со старыми скриптами
-run_command = call_command  # type: ignore
-
+# обратная совместимость
+run_command = call_command  # type: ignore[assignment]
 
 # --------------------------------------------------------------------------- #
-#  Git-вспомогательные функции
+#  Git-хелперы
 # --------------------------------------------------------------------------- #
+
+
 def working_dir_clean() -> bool:
-    """True, если `git status --porcelain` пуст (рабочая копия чиста)."""
-    result = call_command("git status --porcelain", return_stdout=True)
-    return not result.stdout  # type: ignore[attr-defined]
+    """True, если «чистый» ``git status --porcelain``."""
+    return not call_command("git status --porcelain", return_stdout=True)
 
 
 def show_git_diff_short() -> None:
@@ -116,7 +161,7 @@ def show_git_diff_short() -> None:
 
 
 def git_push(branch: str) -> None:
-    """Упрощённая обёртка над `git push origin <branch>`."""
+    """Упрощённая обёртка над ``git push origin <branch>``."""
     command = f"git push origin {branch}"
     print("#" * 20, command)
     subprocess.run(_to_argv(command))
@@ -128,8 +173,8 @@ def save_changes_to_github(
     git_add_all: bool = True,
     branch: str = "main",
 ) -> None:
-    """Сделать git add/commit/push одной командой."""
-    status = call_command("git status -s", return_stdout=True).stdout  # type: ignore[attr-defined]
+    """Сделать ``git add/commit/push`` одним вызовом."""
+    status = call_command("git status -s", return_stdout=True)
     if not status:
         return
 
@@ -144,14 +189,16 @@ def save_changes_to_github(
 
 
 # --------------------------------------------------------------------------- #
-#  Работа с путями/главами
+#  Главо-/путь-утилиты
 # --------------------------------------------------------------------------- #
+
+
 def current_dir_name() -> str:
     return Path().absolute().name
 
 
 def current_chapter_id() -> int:
-    """Номер текущего каталога-главы (exercises/XX_name)."""
+    """Номер текущей главы-директории (exercises/XX_name)."""
     chapter = current_dir_name()
     if chapter in DB_TASK_DIRS:
         chapter = TASK_DIRS[-1]
@@ -161,8 +208,12 @@ def current_chapter_id() -> int:
 # --------------------------------------------------------------------------- #
 #  PyTest JSON-report
 # --------------------------------------------------------------------------- #
+
+
 def parse_json_report(report):  # type: ignore[override]
-    """Преобразовать dict от `pytest-json-report` → список прошедших тестов."""
+    """
+    Преобразовать dict от ``pytest-json-report`` → список успешно пройденных тестов.
+    """
     if report and report["summary"]["total"]:
         grouped: defaultdict[str, list[bool]] = defaultdict(list)
         for test in report["tests"]:
@@ -175,15 +226,16 @@ def parse_json_report(report):  # type: ignore[override]
 # --------------------------------------------------------------------------- #
 #  Работа с удалёнными репо / копирование файлов
 # --------------------------------------------------------------------------- #
+
+
 def git_clone_repo(repo_url: str, dst_dir: str) -> None:
-    result = call_command(
+    rc, err = call_command(
         ["git", "clone", repo_url, dst_dir],
         verbose=False,
         return_stderr=True,
     )
-    if result.returncode != 0:  # type: ignore[union-attr]
-        err = result.stderr.lower()  # type: ignore[union-attr]
-        if "could not resolve host" in err:
+    if rc != 0:
+        if "could not resolve host" in err.lower():
             raise PynengError(red("Failed to clone the repository. No internet?"))
         raise PynengError(red(f"Failed to copy files. {err}"))
 
@@ -203,11 +255,13 @@ def copy_answer_files(passed_tests: Sequence[str], dst_dir: Path) -> None:
 
 
 def copy_answers(passed_tests: Sequence[str]) -> None:
-    """Скопировать готовые ответы для *успешных* тестов в текущую папку."""
+    """
+    Скопировать ответы для *успешных* тестов в текущую директорию.
+    """
     cwd = Path().absolute()
     chapter = cwd.name
-    Path.home().joinpath("pyneng-answers").mkdir(exist_ok=True)
     answers_repo = Path.home() / "pyneng-answers"
+    answers_repo.parent.mkdir(exist_ok=True)
 
     if answers_repo.exists():
         shutil.rmtree(answers_repo, onerror=remove_readonly)
@@ -222,8 +276,10 @@ def copy_answers(passed_tests: Sequence[str]) -> None:
 
 
 # --------------------------------------------------------------------------- #
-#  Обновление репозитория задач
+#  Обновление репо заданий
 # --------------------------------------------------------------------------- #
+
+
 def clone_or_pull_task_repo() -> None:
     cwd = Path().absolute()
     home = Path.home()
@@ -260,8 +316,10 @@ def copy_tasks_tests_from_repo(tasks: Sequence[str], tests: Sequence[str]) -> No
 
 
 # --------------------------------------------------------------------------- #
-#  Пакетные обновления / сохранение рабочей директории
+#  Пакетные обновления / сохранение рабочего каталога
 # --------------------------------------------------------------------------- #
+
+
 def save_working_dir(branch: str = "main") -> None:
     if working_dir_clean():
         return
@@ -305,6 +363,8 @@ def update_tasks_and_tests(
 # --------------------------------------------------------------------------- #
 #  Обновление целых глав
 # --------------------------------------------------------------------------- #
+
+
 def copy_chapters(dst_root: Path, chapters: Sequence[str]) -> None:
     for chapter in chapters:
         dst = dst_root / chapter
