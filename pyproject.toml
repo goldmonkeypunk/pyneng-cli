@@ -14,3 +14,4 @@ dev = [
   "build>=1.2",
   "sphinx>=7.3",
   "pip-licenses>=4.4"
+]
