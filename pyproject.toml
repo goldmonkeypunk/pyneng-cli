@@ -17,8 +17,11 @@ readme          = "README.md"
 license         = { text = "MIT" }
 requires-python = ">=3.12"
 
+# Базові залежності, потрібні для роботи утиліти та проходження тестів
 dependencies = [
-    "click>=8.1.7,<9.0.0",
+    "click>=8.1.7,<9.0.0",             # CLI-фреймворк
+    "rich>=13.0.0,<14.0.0",            # кольоровий/markdown-вивід (імпортується в коді)
+    "pytest-json-report>=1.5.0,<2.0.0" # потрібен модуль JSONReport, імпортується в cli
 ]
 
 [project.optional-dependencies]
@@ -26,6 +29,9 @@ dev = [
     # форматування / стиль
     "ruff>=0.4.0,<0.5.0",
     "black>=24.4.2,<25.0.0",
+
+    # статичний аналіз
+    "mypy>=1.10.0,<2.0.0",
 
     # тести
     "pytest>=8.2.0,<9.0.0",
@@ -64,18 +70,19 @@ known_first_party      = ["pyneng_cli"]
 #   MYPY  (спрощені налаштування — лише базова перевірка)
 # --------------------------------------------------------------------------- #
 [tool.mypy]
-python_version          = "3.12"
-ignore_missing_imports  = true
-disallow_untyped_defs   = false   # ДОЗВОЛЯЄМО функції без анотацій
+python_version           = "3.12"
+ignore_missing_imports   = true
+disallow_untyped_defs    = false   # ДОЗВОЛЯЄМО функції без анотацій
 disallow_incomplete_defs = false
-warn_unused_ignores     = false   # не лаятися на зайві `type: ignore`
+warn_unused_ignores      = false   # не лаятися на зайві `type: ignore`
 
 # --------------------------------------------------------------------------- #
 #   PYTEST
 # --------------------------------------------------------------------------- #
 [tool.pytest.ini_options]
-addopts   = "-q --color=yes"
-testpaths = ["tests"]
+addopts     = "-q --color=yes"
+testpaths   = ["tests"]
+pythonpath  = ["src"]      # щоб імпортувався пакет із каталогу src
 
 # --------------------------------------------------------------------------- #
 #   RUFF
