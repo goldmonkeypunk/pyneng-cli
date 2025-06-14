@@ -63,7 +63,7 @@ jobs:
 
       - name: 🔎 MyPy
         run: eval "$TYPECHECK_CMD"
-
+        
       - name: 🛡️ Bandit
         run: eval "$SECURITY_CMD"
 
