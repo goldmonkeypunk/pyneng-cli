@@ -1,51 +1,39 @@
+"""pyneng CLI – точка входа командной утилиты."""
+
 from __future__ import annotations
 
 import sys
+from pathlib import Path  # noqa: F401 – глубже в коде используется
+from typing import Sequence  # noqa: F401
 
 import click
 
 # --------------------------------------------------------------------------- #
-#  OPTIONAL rich (если пакета нет — тихий fallback, Ruff доволен)
+#  OPTIONAL «rich»: тихий fallback, если пакет не установлен
 # --------------------------------------------------------------------------- #
 try:
-    from rich.console import Console  # noqa: F401
-    from rich.markdown import Markdown  # noqa: F401
+    from rich.console import Console  # type: ignore
+    from rich.markdown import Markdown  # type: ignore
 except ModuleNotFoundError:  # pragma: no cover
 
-    class Console:  # noqa: D401, F401
-        """Простейший stdout-консолеподобный объект."""
+    class _PlainConsole:  # pylint: disable=too-few-public-methods
+        """Упрощённая версия rich.console.Console (stdout only)."""
 
-        def __init__(self, *_, **__):
-            pass
-
-        def print(self, *args, **kwargs):  # noqa: D401
+        def print(self, *args, **kwargs) -> None:  # noqa: D401
             print(*args, **kwargs)
 
-    def Markdown(text):  # type: ignore  # noqa: D401, F401
+    def _markdown(text: str) -> str:  # noqa: D401
         return text
 
+    Console = _PlainConsole  # type: ignore[assignment,misc]
+    Markdown = _markdown  # type: ignore[assignment,misc]
 
 # --------------------------------------------------------------------------- #
-#  Внутренние импорты (часть используем, часть оставляем — отмечены noqa)
+#  ЛОКАЛЬНЫЕ ИМПОРТЫ (только реально используемые ниже)
 # --------------------------------------------------------------------------- #
-from pyneng_cli import (  # isort: skip
-    TASK_DIRS,  # noqa: F401
-    DB_TASK_DIRS,  # noqa: F401
-    TASK_NUMBER_DIR_MAP,  # noqa: F401
-)
+from pyneng_cli.utils import red  # isort: skip
+
 from pyneng_cli.pyneng_docs import DOCS  # isort: skip
-
-from pyneng_cli.utils import (  # isort: skip
-    red,
-    green,  # noqa: F401
-    save_changes_to_github,  # noqa: F401
-    current_chapter_id,  # noqa: F401
-    current_dir_name,  # noqa: F401
-    parse_json_report,  # noqa: F401
-    copy_answers,  # noqa: F401
-    update_tasks_and_tests,  # noqa: F401
-    update_chapters_tasks_and_tests,  # noqa: F401
-)
 
 
 # --------------------------------------------------------------------------- #
