@@ -1,7 +1,9 @@
-from pyneng_cli.utils import run_command
+"""Перевіряємо базову функцію запуску shell‑команд."""
+
+from pyneng_cli.utils import call_command
 
 
-def test_run_command_echo():
-    """run_command має повернути stdout shell-команди."""
-    out = run_command("echo 123", return_stdout=True)
-    assert "123" in out
+def test_call_command_echo():
+    """echo 123 має повернути 123 у stdout і exit‑код 0."""
+    out = call_command("echo 123", return_stdout=True)
+    assert out.strip() == "123"
