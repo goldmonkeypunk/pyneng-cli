@@ -1,0 +1,124 @@
+# 🚦 Автоматичні перевірки коду та збірка
+name: 🚦 Універсальні перевірки якості
+
+on:
+  push:          {branches: ["**"]}
+  pull_request:
+  # 10 планових запусків на добу (UTC → Kyiv +3 год)
+  schedule:
+    - cron: '12 0  * * *'
+    - cron: '12 2  * * *'
+    - cron: '12 4  * * *'
+    - cron: '12 6  * * *'
+    - cron: '12 8  * * *'
+    - cron: '12 10 * * *'
+    - cron: '12 12 * * *'
+    - cron: '12 14 * * *'
+    - cron: '12 16 * * *'
+    - cron: '12 18 * * *'
+
+# Єдина зона, яку правлю під інший стек
+env:
+  PYTHON_VERSION: "3.12"                # "" → пропустити setup‑python
+  PROJECT_PATH: "."                     # корінь вихідних кодів
+  LINT_CMD: "ruff check $PROJECT_PATH"  # ESLint тощо
+  FORMAT_CMD: "black --check $PROJECT_PATH"
+  TYPECHECK_CMD: "mypy $PROJECT_PATH"
+  SECURITY_CMD: "bandit -r $PROJECT_PATH -ll"
+  TEST_CMD: "pytest -q --cov=$PROJECT_PATH --cov-report=xml"
+  DOCS_CMD: "sphinx-build -b html docs docs/_build/html"
+  BUILD_CMD: "python -m build --sdist --wheel -o dist"
+  COV_THRESHOLD: "80"                   # мінімальний % покриття
+
+jobs:
+  quality:
+    name: 🛠️ Перевірки коду
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Клоную код
+      - name: ⬇️ Завантажити репозиторій
+        uses: actions/checkout@v4
+
+      # 2. Фіксую час ‑ зручно дивитись у логах
+      - name: 🕒 Час старту
+        run: date -u
+
+      # 3. Ставлю потрібний рантайм
+      - name: 🐍 Налаштувати Python
+        if: env.PYTHON_VERSION != ''
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip              # кешую залежності
+
+      # 4. Базові пакети проєкту
+      - name: 📦 Prod‑залежності
+        run: |
+          python -m pip install -U pip
+          pip install -e .
+
+      # 5. Інструменти розробника
+      - name: 🧰 Dev‑інструменти
+        run: |
+          pip install ruff black mypy bandit pytest pytest-cov build sphinx
+
+      # 6. Лінт стилю
+      - name: 🔍 Ruff
+        run: eval "$LINT_CMD"
+
+      # 7. Перевіряю формат (Black)
+      - name: 🎨 Black --check
+        run: eval "$FORMAT_CMD"
+
+      # 8. Статичний аналіз типів
+      - name: 🔎 MyPy
+        run: eval "$TYPECHECK_CMD"
+
+      # 9. Лінт безпеки
+      - name: 🛡️ Bandit
+        run: eval "$SECURITY_CMD"
+
+      # 10. Тести з покриттям
+      - name: ✅ Pytest + coverage
+        id: tests
+        run: |
+          eval "$TEST_CMD"
+          # виймаю відсоток покриття для підсумку
+          COV=$(grep -oP '(?<=line-rate=")[0-9.]+' coverage.xml | awk '{printf "%.1f",$1*100}')
+          echo "coverage=$COV" >> $GITHUB_OUTPUT
+
+      # 11. Контролюю мінімальний поріг
+      - name: 📏 Поріг покриття
+        run: |
+          ACT=${{ steps.tests.outputs.coverage }}
+          echo "Покриття: $ACT %, поріг $COV_THRESHOLD %"
+          test $(printf "%.0f" $ACT) -ge $COV_THRESHOLD
+
+      # 12. Документація (якщо є)
+      - name: 📚 Sphinx‑docs
+        run: |
+          if [ -d docs ]; then
+            eval "$DOCS_CMD"
+          fi
+
+      # 13. Збірка дистрибутива
+      - name: 📦 build
+        run: eval "$BUILD_CMD"
+
+      # 14. Короткий підсумок у вкладці Summary
+      - name: 📝 Підсумок
+        run: |
+          echo "### Підсумок якості"                           >> $GITHUB_STEP_SUMMARY
+          echo "- Покриття: **${{ steps.tests.outputs.coverage }} %**" >> $GITHUB_STEP_SUMMARY
+          echo "- Поріг: **$COV_THRESHOLD %**"                >> $GITHUB_STEP_SUMMARY
+
+      # 15. Вигружаю корисні файли
+      - name: 💾 Артефакти
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-artifacts
+          path: |
+            coverage.xml
+            dist/*
+            docs/_build/html

@@ -1,0 +1,56 @@
+# 🧹 Прибирання артефактів після успішного CI
+name: 🧹 Прибирання артефактів
+
+on:
+  workflow_run:
+    workflows: ["🚦 Універсальні перевірки якості"]
+    types: [completed]
+
+env:
+  WAIT_SEC: "120"      # пауза перед прибиранням
+  MAX_AGE_MIN: "30"    # зберігаю артефакти ≤ 30 хв
+
+jobs:
+  cleanup:
+    name: Прибирання
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: ⏳ Пауза
+        run: sleep $WAIT_SEC
+
+      - name: ⚙️ Встановити ghapi
+        run: pip install ghapi
+
+      - name: 🗑️ Видалити старі артефакти
+        id: prune
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os, datetime as dt, ghapi.core as gh
+
+          age = int(os.environ["MAX_AGE_MIN"])
+          cutoff = dt.datetime.utcnow() - dt.timedelta(minutes=age)
+
+          owner, repo = os.environ["GITHUB_REPOSITORY"].split("/")
+          api = gh.GhApi(owner=owner, repo=repo)
+
+          deleted = 0
+          for art in api.actions.list_artifacts_for_repo()["artifacts"]:
+              created = dt.datetime.strptime(art["created_at"], "%Y-%m-%dT%H:%M:%SZ")
+              if created < cutoff:
+                  api.actions.delete_artifact(artifact_id=art["id"])
+                  deleted += 1
+                  print(f"del {art['name']}")
+
+          print("TOTAL", deleted)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"deleted={deleted}\n")
+          PY
+
+      - name: 📝 Підсумок
+        run: |
+          echo "### Прибирання артефактів"                    >> $GITHUB_STEP_SUMMARY
+          echo "- Видалено: **${{ steps.prune.outputs.deleted }}**" >> $GITHUB_STEP_SUMMARY
