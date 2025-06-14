@@ -2,8 +2,10 @@
 name: 🚦 Універсальні перевірки якості
 
 on:
-  push: {branches: ["**"]}
+  push: 
+    branches: ["main", "ci-setup"]
   pull_request:
+    branches: ["main"]
   schedule:
     - cron: '12 0  * * *'
     - cron: '12 2  * * *'
