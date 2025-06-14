@@ -1,37 +1,39 @@
-name: 🔍 Universal Quality Checks
+name: Universal quality checks
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main", "ci-setup"]   # добавьте, если хотите прогонять CI по этой ветке
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
+
+env:
+  PROJECT_PATH: "src"
 
 jobs:
   quality:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v4
+      - name: ⬇️ Checkout
+        uses: actions/checkout@v4
 
-      - name: 🐍  Set up Python 3.12
+      - name: 🐍 Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: 📦  Install dependencies
+      - name: 📦 Install deps
         run: |
           python -m pip install --upgrade pip
-          # dev-залежності визначені у [project.optional-dependencies].dev
-          pip install -e ".[dev]"
+          pip install ruff black mypy pytest pytest-cov build sphinx
 
-      - name: ✨ Ruff (lint + autofix)
-        run: ruff check . --fix
+      - name: ✨ Ruff
+        run: ruff check $PROJECT_PATH
 
-      - name: 🖤 Black (format check)
+      - name: 🖤 Black
         run: black --check .
 
-      - name: 🔠 Mypy (type check)
-        run: mypy src/pyneng_cli
+      - name: 🔍 MyPy
+        run: mypy $PROJECT_PATH
 
-      - name: ✅ Pytest
+      - name: 🧪 PyTest
         run: pytest -q
