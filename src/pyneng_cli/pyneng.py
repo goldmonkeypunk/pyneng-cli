@@ -11,6 +11,7 @@ try:
     from rich.console import Console  # noqa: F401
     from rich.markdown import Markdown  # noqa: F401
 except ModuleNotFoundError:  # pragma: no cover
+
     class Console:  # noqa: D401, F401
         """Простейший stdout-консолеподобный объект."""
 
@@ -46,6 +47,7 @@ from pyneng_cli.utils import (  # isort: skip
     update_chapters_tasks_and_tests,  # noqa: F401
 )
 
+
 # --------------------------------------------------------------------------- #
 #  Удобный вывод исключений (использует только red)
 # --------------------------------------------------------------------------- #
@@ -55,6 +57,7 @@ def _exception_handler(exc_type, exc, _tb):  # noqa: D401
 
 
 sys.excepthook = _exception_handler
+
 
 # --------------------------------------------------------------------------- #
 #  Минимально-рабочий CLI (для тестов достаточно help / version)
