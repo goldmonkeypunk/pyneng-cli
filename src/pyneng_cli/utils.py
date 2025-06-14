@@ -25,6 +25,7 @@ from pyneng_cli import (
 )
 from pyneng_cli.exceptions import PynengError
 
+
 # --------------------------------------------------------------------------- #
 #  Цветные «украшения»
 # --------------------------------------------------------------------------- #
@@ -70,7 +71,7 @@ def call_command(  # noqa: D401 (краткое описание)
     """
     Выполнить *command* через `subprocess.run`.
 
-    На Windows иногда нужен `shell=True` (bat/cmd-файлы).  
+    На Windows иногда нужен `shell=True` (bat/cmd-файлы).
     На других ОС вызываем без оболочки, чтобы не ловить Bandit B602.
     """
     argv: list[str] = _to_argv(command)
@@ -84,20 +85,15 @@ def call_command(  # noqa: D401 (краткое описание)
         stderr=subprocess.PIPE,
     )
 
-    std = result.stdout
-    err = result.stderr
-
-    if return_stdout:
-        return result
-    if return_stderr:
+    if return_stdout or return_stderr:
         return result
 
     if verbose:
         print("#" * 20, command)
-        if std:
-            print(std)
-        if err:
-            print(err)
+        if result.stdout:
+            print(result.stdout)
+        if result.stderr:
+            print(result.stderr)
 
     return result.returncode
 
@@ -105,12 +101,14 @@ def call_command(  # noqa: D401 (краткое описание)
 # Имя `run_command` оставляем для совместимости со старыми скриптами
 run_command = call_command  # type: ignore
 
+
 # --------------------------------------------------------------------------- #
 #  Git-вспомогательные функции
 # --------------------------------------------------------------------------- #
 def working_dir_clean() -> bool:
     """True, если `git status --porcelain` пуст (рабочая копия чиста)."""
-    return not call_command("git status --porcelain", return_stdout=True).stdout  # type: ignore[attr-defined]
+    result = call_command("git status --porcelain", return_stdout=True)
+    return not result.stdout  # type: ignore[attr-defined]
 
 
 def show_git_diff_short() -> None:
