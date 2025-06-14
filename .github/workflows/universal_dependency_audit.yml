@@ -1,4 +1,4 @@
-# 🔍 Періодичний або ручний аудит залежностей
+# 🔍 Аудит та SBOM залежностей (ручний запуск)
 name: 🔍 Універсальний аудит залежностей
 
 on:
@@ -10,7 +10,7 @@ on:
         default: false
 
 env:
-  INSTALL_CMD: "pip install"            # npm ci / go …
+  INSTALL_CMD: "pip install"
   AUDIT_CMD: "pip-audit -f table"
   SBOM_CMD: "pip-licenses --format=md --with-license-file"
 
@@ -22,41 +22,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Базові інструменти для перевірок
-      - name: 📦 Встановити audit‑tools
+      - name: 📦 Встановити інструменти
         run: $INSTALL_CMD pip-audit safety pip-licenses
 
-      # (опціонально) оновлюю залежності до свіжих версій
       - name: 🔄 Оновити залежності
         if: ${{ github.event.inputs.UPGRADE == 'true' }}
         run: $INSTALL_CMD -U .
 
-      # Генерую список ліцензій (SBOM)
-      - name: 🗒️ Створити SBOM
+      - name: 🗒️ SBOM
         run: eval "$SBOM_CMD" > sbom.md
 
-      # Основний сканер вразливостей
       - name: 🛡️ pip‑audit
         run: eval "$AUDIT_CMD" | tee audit.txt
 
-      # Додатковий скан через Safety DB
-      - name: 📊 Safety
+      - name: 📊 Safety DB
         run: safety check --full-report | tee safety.txt
 
-      # Підрахунок CVE для зведення
-      - name: 📈 Статистика CVE
+      - name: 📈 CVE‑статистика
         id: cve
         run: |
           COUNT=$(grep -c "CVE-" audit.txt || true)
           echo "count=$COUNT" >> $GITHUB_OUTPUT
 
-      # Резюме у вкладці Summary
       - name: 📝 Підсумок
         run: |
           echo "### Аудит залежностей"                  >> $GITHUB_STEP_SUMMARY
           echo "- Знайдено CVE: **${{ steps.cve.outputs.count }}**" >> $GITHUB_STEP_SUMMARY
 
-      # Звітні файли на всяк випадок
       - uses: actions/upload-artifact@v4
         with:
           name: dependency-audit

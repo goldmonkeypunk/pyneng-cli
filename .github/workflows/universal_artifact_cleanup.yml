@@ -7,8 +7,8 @@ on:
     types: [completed]
 
 env:
-  WAIT_SEC: "120"      # пауза перед прибиранням
-  MAX_AGE_MIN: "30"    # зберігаю артефакти ≤ 30 хв
+  WAIT_SEC: "120"
+  MAX_AGE_MIN: "30"
 
 jobs:
   cleanup:
@@ -30,21 +30,17 @@ jobs:
         run: |
           python - <<'PY'
           import os, datetime as dt, ghapi.core as gh
-
           age = int(os.environ["MAX_AGE_MIN"])
           cutoff = dt.datetime.utcnow() - dt.timedelta(minutes=age)
-
           owner, repo = os.environ["GITHUB_REPOSITORY"].split("/")
           api = gh.GhApi(owner=owner, repo=repo)
-
           deleted = 0
-          for art in api.actions.list_artifacts_for_repo()["artifacts"]:
-              created = dt.datetime.strptime(art["created_at"], "%Y-%m-%dT%H:%M:%SZ")
+          for a in api.actions.list_artifacts_for_repo()["artifacts"]:
+              created = dt.datetime.strptime(a["created_at"], "%Y-%m-%dT%H:%M:%SZ")
               if created < cutoff:
-                  api.actions.delete_artifact(artifact_id=art["id"])
+                  api.actions.delete_artifact(artifact_id=a["id"])
                   deleted += 1
-                  print(f"del {art['name']}")
-
+                  print("del", a["name"])
           print("TOTAL", deleted)
           with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
               fh.write(f"deleted={deleted}\n")
