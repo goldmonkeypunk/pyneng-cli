@@ -5,19 +5,19 @@
 * call_command → зручна обгортка (приймає str | list[str])
 * run_command залишено як псевдонім для зворотної сумісності
 """
+
 from __future__ import annotations
 
 import os
 import stat
 import subprocess
-import sys               # ← потрібен для sys.platform
+import sys  # ← потрібен для sys.platform
 from shlex import split as sh_split
 from typing import Sequence
 
 import click
 
 # ці імпорти дійсно використовуються нижче у файлі
-
 
 
 # ──────────────────────────── helpers ──────────────────────────────
