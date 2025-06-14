@@ -1,61 +1,108 @@
+###############################################################################
+# PYPROJECT.TOML — повна конфігурація пакета «pyneng_cli»
+###############################################################################
+
 [build-system]
-requires = ["setuptools>=61", "wheel"]
+requires      = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name            = "pyneng-cli"
-version         = "5.1.0"
-description     = "CLI-утиліта до курсу «Пайтон для мережевих інженерів»"
+name            = "pyneng_cli"
+dynamic         = ["version", "description"]
+authors         = [{ name = "Your Name", email = "you@example.com" }]
 readme          = "README.md"
-license         = { file = "LICENSE" }
-authors         = [{ name = "Natalia Samoylenko", email = "natenka@example.com" }]
-requires-python = ">=3.9"
+license         = { text = "MIT" }
+requires-python = ">=3.12"
 
 dependencies = [
-  "click>=8.1,<9.0",
+    # --- runtime deps ---
+    "click>=8.1.7,<9.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-  # лінтери / форматери
-  "ruff>=0.4.4,<0.5.0",
-  "black>=24.2.0,<25.0",
-  # типізація
-  "mypy>=1.9.0,<2.0",
-  # тестування й покриття
-  "pytest>=8.2.0,<9.0",
-  "pytest-cov>=5,<6",
-  # документація
-  "sphinx>=7.2,<8.0",
+    # якісні інструменти
+    "ruff>=0.4.0,<0.5.0",
+    "black>=24.4.2,<25.0.0",
+    "mypy>=1.10.0,<2.0.0",
+    "pytest>=8.2.0,<9.0.0",
+    "pytest-cov",
+    "build",
+    "sphinx",
 ]
 
-############################################################
-#                      ІНСТРУМЕНТИ                         #
-############################################################
+###############################################################################
+# Setuptools (автоматичний пошук пакунків з префіксом `pyneng_cli`)
+###############################################################################
+[tool.setuptools.package-data]
+"pyneng_cli" = ["py.typed"]
 
+###############################################################################
+# Black
+###############################################################################
 [tool.black]
-line-length             = 88
-target-version          = ["py311"]
-skip-string-normalization = true
+line-length    = 88
+target-version = ["py312"]
 
+###############################################################################
+# isort (вирівнюємо імпорти під Black)
+###############################################################################
+[tool.isort]
+profile                = "black"
+line_length            = 88
+multi_line_output      = 3
+include_trailing_comma = true
+combine_as_imports     = true
+known_first_party      = ["pyneng_cli"]
+
+###############################################################################
+# mypy
+###############################################################################
 [tool.mypy]
-python_version          = "3.11"
-strict                  = true
-exclude                 = ["tests/"]
+python_version        = "3.12"
+strict                = true
+ignore_missing_imports = true
+plugins               = []
 
+###############################################################################
+# pytest
+###############################################################################
+[tool.pytest.ini_options]
+addopts   = "-q --color=yes"
+testpaths = ["tests"]
+
+###############################################################################
+# Ruff 0.4+  (уся лінтер-конфігурація тепер у підсекції [tool.ruff.lint])
+###############################################################################
 [tool.ruff]
-line-length   = 88
-target-version = "py311"
+line-length    = 88
+target-version = "py312"
 
 [tool.ruff.lint]
-select        = ["ALL"]          # увесь набір правил Ruff
-ignore        = ["D203", "D212"] # приклад відключених Docstring-правил
-fixable       = ["ALL"]          # що можна авто-фіксити
-unsafe-fixes  = []               # небезпечні автофікси заборонено
+# Увімкнені правила
+select = [
+    "E",  # pycodestyle errors
+    "F",  # pyflakes
+    "W",  # pycodestyle warnings
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+    "SIM",# flake8-simplify
+    "C90",# mccabe
+]
 
-[tool.ruff.lint.per-file-ignores]
-"tests/*" = ["D", "ANN", "S101"] # у тестах м’якше
+# Приклад: забороняємо автофікси для певної групи (необов'язково)
+extend-unfixable = ["B"]     # не виправляти Bugbear-правила
 
-[tool.pytest.ini_options]
-addopts   = "-q --strict-markers --tb=short"
-testpaths = ["tests"]
+###############################################################################
+# Пагінація документації (Sphinx)
+###############################################################################
+[tool.sphinx]
+project   = "pyneng_cli"
+copyright = "2025, Your Name"
+author    = "Your Name"
+
+###############################################################################
+# Кінець файлу
+###############################################################################
