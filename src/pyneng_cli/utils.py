@@ -5,33 +5,19 @@
 * call_command → зручна обгортка (приймає str | list[str])
 * run_command залишено як псевдонім для зворотної сумісності
 """
-
 from __future__ import annotations
 
 import os
-import pathlib
-import re
-import shutil
 import stat
 import subprocess
-import sys
-from collections import defaultdict
-from platform import system as system_name
+import sys               # ← потрібен для sys.platform
 from shlex import split as sh_split
-from typing import Iterable, Sequence
+from typing import Sequence
 
 import click
 
-from pyneng_cli import (  # noqa: D401  (коротка форма опису module‑level)
-    ANSWERS_URL,
-    DB_TASK_DIRS,
-    LANG_TASKS_LOCAL_REPO,
-    LANG_TASKS_URL,
-    TASKS_LOCAL_REPO,
-    TASKS_URL,
-    TASK_DIRS,
-)
-from pyneng_cli.exceptions import PynengError
+# ці імпорти дійсно використовуються нижче у файлі
+
 
 
 # ──────────────────────────── helpers ──────────────────────────────
