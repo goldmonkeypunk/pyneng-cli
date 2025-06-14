@@ -1,6 +1,10 @@
-[build-system]
-requires = ["setuptools>=61.0.0", "wheel"]
-build-backend = "setuptools.build_meta"
+[project]
+name = "pyneng-cli"
+version = "5.1.0"      # ← ставлю поточну версію пакета
+description = "CLI utility for 'Python for Network Engineers'"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
 
 [project.optional-dependencies]
 dev = [
