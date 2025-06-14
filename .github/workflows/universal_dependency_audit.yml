@@ -29,7 +29,7 @@ jobs:
       # (опціонально) оновлюю залежності до свіжих версій
       - name: 🔄 Оновити залежності
         if: ${{ github.event.inputs.UPGRADE == 'true' }}
-        run: $INSTALL_CMD -U -r requirements.txt || true
+        run: $INSTALL_CMD -U .
 
       # Генерую список ліцензій (SBOM)
       - name: 🗒️ Створити SBOM
