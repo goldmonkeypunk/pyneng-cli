@@ -3,16 +3,11 @@ from platform import system as system_name
 import re
 import os
 from collections import defaultdict
-import tempfile
 import pathlib
 import stat
 import shutil
-from datetime import datetime, timedelta
 
 import click
-import github
-from rich import print as rprint
-from rich.padding import Padding
 
 from pyneng_cli.exceptions import PynengError
 from pyneng_cli import (
@@ -79,7 +74,7 @@ def working_dir_clean():
 
 
 def show_git_diff_short():
-    git_diff = call_command("git diff --stat")
+    call_command("git diff --stat")
 
 
 def git_push(branch):
@@ -88,7 +83,7 @@ def git_push(branch):
     """
     command = f"git push origin {branch}"
     print("#" * 20, command)
-    result = subprocess.run(command, shell=True)
+    subprocess.run(command, shell=True)
 
 
 def save_changes_to_github(
@@ -133,9 +128,9 @@ def parse_json_report(report):
     """
     if report and report["summary"]["total"] != 0:
         all_tests = defaultdict(list)
-        summary = report["summary"]
+        report["summary"]
 
-        test_names = [test["nodeid"] for test in report["collectors"][0]["result"]]
+        [test["nodeid"] for test in report["collectors"][0]["result"]]
         for test in report["tests"]:
             name = test["nodeid"].split("::")[0]
             all_tests[name].append(test["outcome"] == "passed")
@@ -169,7 +164,7 @@ def copy_answers(passed_tasks):
     """
     pth = str(pathlib.Path().absolute())
     current_chapter_name = os.path.split(pth)[-1]
-    current_chapter_number = int(current_chapter_name.split("_")[0])
+    int(current_chapter_name.split("_")[0])
 
     homedir = pathlib.Path.home()
     os.chdir(homedir)
@@ -223,14 +218,12 @@ def copy_tasks_tests_from_repo(tasks, tests):
     """
     source_pth = str(pathlib.Path().absolute())
     current_chapter_name = os.path.split(source_pth)[-1]
-    current_chapter_number = int(current_chapter_name.split("_")[0])
+    int(current_chapter_name.split("_")[0])
 
     clone_or_pull_task_repo()
 
     homedir = pathlib.Path.home()
-    os.chdir(
-        os.path.join(homedir, TASKS_LOCAL_REPO, "exercises", current_chapter_name)
-    )
+    os.chdir(os.path.join(homedir, TASKS_LOCAL_REPO, "exercises", current_chapter_name))
     copy_task_test_files(source_pth, tasks, tests)
     print(green("\nUpdated tasks and tests copied"))
     os.chdir(source_pth)

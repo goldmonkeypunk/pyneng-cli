@@ -1,7 +1,5 @@
 import sys
 import re
-import os
-import json
 from glob import glob
 
 import click
@@ -11,12 +9,10 @@ from rich.markdown import Markdown
 from pytest_jsonreport.plugin import JSONReport
 
 from pyneng_cli import (
-    DEFAULT_BRANCH,
     TASK_DIRS,
     DB_TASK_DIRS,
     TASK_NUMBER_DIR_MAP,
 )
-from pyneng_cli.exceptions import PynengError
 from pyneng_cli.pyneng_docs import DOCS
 from pyneng_cli.utils import (
     red,
