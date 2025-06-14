@@ -1,15 +1,13 @@
-# Vim undo files.
-# #######################
-*.un~
+# віртуальне середовище
+.venv/
 
-# Python #
-# full gitignore example https://github.com/github/gitignore/blob/main/Python.gitignore
-# #######################
-*.pyc
+# build-артефакти
+build/
+dist/
+*.egg-info/
+
+# IDE / OS сміття
+.vscode/
 __pycache__/
 *.py[cod]
-*.swp
-dist
-*.egg-info
-build
-
+.DS_Store

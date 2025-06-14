@@ -1,144 +1,346 @@
-"""
-Утиліти pyneng‑cli.
-
-* subprocess по максимуму викликаємо **без** shell=True
-* call_command → зручна обгортка (приймає str | list[str])
-* run_command залишено як псевдонім для зворотної сумісності
-"""
-
 from __future__ import annotations
 
 import os
+import re
+import shutil
 import stat
 import subprocess
-import sys  # ← потрібен для sys.platform
+import sys
+from collections import defaultdict
+from pathlib import Path
+from platform import system as system_name
 from shlex import split as sh_split
 from typing import Sequence
 
 import click
 
-# ці імпорти дійсно використовуються нижче у файлі
+from pyneng_cli.exceptions import PynengError
+from pyneng_cli import (
+    ANSWERS_URL,
+    TASK_DIRS,
+    DB_TASK_DIRS,
+    TASKS_URL,
+    TASKS_LOCAL_REPO,
+    LANG_TASKS_URL,
+    LANG_TASKS_LOCAL_REPO,
+)
 
 
-# ──────────────────────────── helpers ──────────────────────────────
+# --------------------------------------------------------------------------- #
+#  Колірні «прикраси"
+# --------------------------------------------------------------------------- #
+def red(msg: str) -> str:
+    """Повернути строку, пофарбовану у **червоний**."""
+    return click.style(msg, fg="red")
 
 
-def _stylize(color: str) -> click.Style:
-    def _inner(msg: str) -> str:
-        return click.style(msg, fg=color)
-
-    return _inner
+def green(msg: str) -> str:
+    """Повернути строку, пофарбовану у **зелений**."""
+    return click.style(msg, fg="green")
 
 
-red = _stylize("red")
-green = _stylize("green")
-
-
+# --------------------------------------------------------------------------- #
+#  Допоміжні утиліти
+# --------------------------------------------------------------------------- #
 def remove_readonly(func, path, _):
-    """Допоміжна функція для `shutil.rmtree` під Windows (`onerror`)."""
+    """
+    Для Windows: дозволяє `shutil.rmtree` видаляти read-only файли
+    (наприклад, усередині .git).
+    """
     os.chmod(path, stat.S_IWRITE)
     func(path)
 
 
-# ──────────────────────────── subprocess ───────────────────────────
+def _to_argv(command: str | Sequence[str]) -> list[str]:
+    """
+    Гарантуємо, що у ``subprocess`` підемо з *list[str]*:
 
-
-def _to_argv(command: str | Sequence[str]) -> Sequence[str]:
-    """Повертає коректний список аргументів для `subprocess.run`.
-
-    * str  → розбивається `shlex.split`
-    * list → лишається без змін
+    * якщо передали str → `shlex.split`
+    * якщо list/tuple → залишаємо як є
     """
     return sh_split(command) if isinstance(command, str) else list(command)
 
 
-def call_command(  # noqa: D401 (короткий опис), C901 (розумна складність)
+def call_command(  # noqa: D401  (коротка форма опису), C901 (OK для утиліти)
     command: str | Sequence[str],
     *,
     verbose: bool = True,
     return_stdout: bool = False,
     return_stderr: bool = False,
-) -> int | str | tuple[int, str]:
+):
     """
-    Виконує shell‑команду **без** ``shell=True`` (безпечніше).
+    Виконати *command* через :pyfunc:`subprocess.run`.
 
-    Параметри
-    ----------
-    command
-        Команда рядком **або** списком аргументів.
-    verbose
-        Виводити stdout / stderr у консоль.
-    return_stdout / return_stderr
-        Якщо ``True`` — повернути відповідні дані замість коду завершення.
+    *Windows* — єдина платформа, де інколи треба ``shell=True`` (bat/cmd-файли).
+    На інших ОС викликаємо без оболонки, щоб не ловити Bandit B602.
     """
-    argv: Sequence[str] = _to_argv(command)
-
-    # Windows активно використовує .bat/.cmd; іноді потрібен shell=True.
-    # Робимо це лише за необхідності й підписуємо nosec.
+    argv: list[str] = _to_argv(command)
     needs_shell = sys.platform.startswith("win") and isinstance(command, str)
 
-    result = subprocess.run(  # nosec B602 (обмежено до Windows)
-        argv,
+    result = subprocess.run(  # nosec B602 – див. needs_shell вище
+        argv if not needs_shell else command,  # type: ignore[arg-type]
         shell=needs_shell,
-        text=True,
+        encoding="utf-8",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
 
+    std = result.stdout
+    err = result.stderr
+
     if return_stdout:
-        return result.stdout
+        return std
     if return_stderr:
-        return result.returncode, result.stderr
+        return result.returncode, err
 
     if verbose:
-        click.echo("-" * 60)
-        click.echo(f"$ {' '.join(argv)}")
-        if result.stdout:
-            click.echo(result.stdout.rstrip())
-        if result.stderr:
-            click.echo(red(result.stderr.rstrip()))
+        print("#" * 20, command)
+        if std:
+            print(std)
+        if err:
+            print(err)
 
     return result.returncode
 
 
-# Ім'я, яке використовували старі тести
-run_command = call_command  # noqa: N816  (не змінюємо API)
+# Ім’я «run_command» залишаємо для сумісності зі старими тестами/скриптами
+run_command = call_command  # type: ignore
 
 
-def git_push(branch: str) -> None:
-    """`git push origin <branch>` без небезпечного ``shell=True``."""
-    call_command(["git", "push", "origin", branch])
-
-
-# ──────────────────────── робота з Git / FS ────────────────────────
-
-
+# --------------------------------------------------------------------------- #
+#  Git-допоміжні функції
+# --------------------------------------------------------------------------- #
 def working_dir_clean() -> bool:
-    """Перевіряє `git status --porcelain` — чи нема змін."""
-    return not bool(call_command(["git", "status", "--porcelain"], return_stdout=True))
+    """True, якщо «чистий» `git status --porcelain`."""
+    return not call_command("git status --porcelain", return_stdout=True)
 
 
-def show_git_diff_short() -> None:
-    call_command(["git", "diff", "--stat"])
+def show_git_diff_short():
+    call_command("git diff --stat")
+
+
+def git_push(branch: str):
+    """Проста обгортка над `git push origin <branch>`."""
+    command = f"git push origin {branch}"
+    print("#" * 20, command)
+    subprocess.run(_to_argv(command))
 
 
 def save_changes_to_github(
-    message: str = "All changes saved", git_add_all: bool = True, branch: str = "main"
-) -> None:
-    if not call_command(["git", "status", "-s"], return_stdout=True):
+    message: str = "All changes saved",
+    *,
+    git_add_all: bool = True,
+    branch: str = "main",
+):
+    """`git add/commit/push` — однією командою."""
+    status = call_command("git status -s", return_stdout=True)
+    if not status:
         return
 
     if git_add_all:
-        call_command(["git", "add", "."])
-    call_command(["git", "commit", "-m", message])
+        call_command("git add .")
+    call_command(f'git commit -m "{message}"')
 
-    git_push(branch)
+    if system_name().lower() == "windows":
+        git_push(branch)
+    else:
+        call_command(f"git push origin {branch}")
 
 
-# ──────────────────────── решта логіки (без змін) ──────────────────
-# Нижче залишив ваш код → лише мінімальні косметичні правки
-#   * прибрані зайві змінні, які ловив ruff
-#   * анотації типів
-#   * жодних shell=True
-# -------------------------------------------------------------------
-# … (скоротив для прикладу, залиште ваш існуючий код без змін) …
+# --------------------------------------------------------------------------- #
+#  Шляхові/главові утиліти
+# --------------------------------------------------------------------------- #
+def current_dir_name() -> str:
+    return Path().absolute().name
+
+
+def current_chapter_id() -> int:
+    """Номер поточного розділу-директорії (exercises/XX_name)."""
+    chapter = current_dir_name()
+    if chapter in DB_TASK_DIRS:
+        chapter = TASK_DIRS[-1]
+    return int(chapter.split("_")[0])
+
+
+# --------------------------------------------------------------------------- #
+#  PyTest JSON-report
+# --------------------------------------------------------------------------- #
+def parse_json_report(report):  # type: ignore[override]
+    """
+    Перетворити dict від `pytest-json-report` → список тестів, що пройшли.
+    """
+    if report and report["summary"]["total"]:
+        grouped: defaultdict[str, list[bool]] = defaultdict(list)
+        for test in report["tests"]:
+            fname = test["nodeid"].split("::")[0]
+            grouped[fname].append(test["outcome"] == "passed")
+        return [name for name, ok in grouped.items() if all(ok)]
+    return []
+
+
+# --------------------------------------------------------------------------- #
+#  Робота з віддаленими репо / копіювання файлів
+# --------------------------------------------------------------------------- #
+def git_clone_repo(repo_url: str, dst_dir: str):
+    rc, err = call_command(
+        ["git", "clone", repo_url, dst_dir],
+        verbose=False,
+        return_stderr=True,
+    )
+    if rc != 0:
+        if "could not resolve host" in err.lower():
+            raise PynengError(red("Failed to clone the repository. No internet?"))
+        raise PynengError(red(f"Failed to copy files. {err}"))
+
+
+def copy_answer_files(passed_tests: Sequence[str], dst_dir: Path):
+    for test_file in passed_tests:
+        task_match = re.search(r"task_\w+\.py", test_file)
+        ans_match = re.search(
+            r"answer_task_\w+\.py", test_file.replace("test_", "answer_")
+        )
+        if not (task_match and ans_match):
+            continue
+        task = task_match.group()
+        answer = ans_match.group()
+        if not (dst_dir / answer).exists():
+            shutil.copy2(task, dst_dir / answer)
+
+
+def copy_answers(passed_tests: Sequence[str]):
+    """
+    Скопіювати готові відповіді для *успішних* тестів у поточну папку.
+    """
+    cwd = Path().absolute()
+    chapter = cwd.name
+    Path.home().joinpath("pyneng-answers").mkdir(exist_ok=True)
+    answers_repo = Path.home() / "pyneng-answers"
+
+    if answers_repo.exists():
+        shutil.rmtree(answers_repo, onerror=remove_readonly)
+    git_clone_repo(ANSWERS_URL, str(answers_repo))
+
+    os.chdir(answers_repo / "answers" / chapter)
+    copy_answer_files(passed_tests, cwd)
+    print(green("\nAnswers copied to answer_task_x.py\n"))
+    os.chdir(Path.home())
+    shutil.rmtree(answers_repo, onerror=remove_readonly)
+    os.chdir(cwd)
+
+
+# --------------------------------------------------------------------------- #
+#  Оновлення репо завдань
+# --------------------------------------------------------------------------- #
+def clone_or_pull_task_repo():
+    cwd = Path().absolute()
+    home = Path.home()
+    repo_path = home / TASKS_LOCAL_REPO
+
+    os.chdir(home)
+    if repo_path.exists():
+        os.chdir(repo_path)
+        call_command(["git", "pull"])
+    else:
+        git_clone_repo(TASKS_URL, TASKS_LOCAL_REPO)
+    os.chdir(cwd)
+
+
+def copy_task_test_files(
+    dst: Path,
+    tasks: Sequence[str] | None = None,
+    tests: Sequence[str] | None = None,
+):
+    for fname in (tasks or []) + (tests or []):
+        shutil.copy2(fname, dst / fname)
+
+
+def copy_tasks_tests_from_repo(tasks: Sequence[str], tests: Sequence[str]):
+    cwd = Path().absolute()
+    chapter = cwd.name
+    clone_or_pull_task_repo()
+
+    src = Path.home() / TASKS_LOCAL_REPO / "exercises" / chapter
+    os.chdir(src)
+    copy_task_test_files(cwd, tasks, tests)
+    print(green("\nUpdated tasks and tests copied"))
+    os.chdir(cwd)
+
+
+# --------------------------------------------------------------------------- #
+#  Пакетні оновлення / збереження робочого каталогу
+# --------------------------------------------------------------------------- #
+def save_working_dir(branch: str = "main"):
+    if working_dir_clean():
+        return
+    print(red("Unsaved changes detected!"))
+    if input(red("Save them? [y/N]: ")).strip().lower() in ("y", "yes"):
+        save_changes_to_github("Auto-save before update", branch=branch)
+
+
+def working_dir_changed_diff(branch: str = "main"):
+    print(red("The following files have been updated:"))
+    show_git_diff_short()
+    if input(red("\nCommit & push these changes? [y/N]: ")).strip().lower() in (
+        "y",
+        "yes",
+    ):
+        save_changes_to_github("Update tasks/tests", branch=branch)
+
+
+def change_tasks_lang(lang: str):
+    global TASKS_URL, TASKS_LOCAL_REPO
+    TASKS_URL = LANG_TASKS_URL.get(lang, TASKS_URL)
+    TASKS_LOCAL_REPO = LANG_TASKS_LOCAL_REPO.get(lang, TASKS_LOCAL_REPO)
+
+
+def update_tasks_and_tests(
+    tasks: Sequence[str],
+    tests: Sequence[str],
+    lang: str,
+    branch: str = "main",
+) -> bool:
+    change_tasks_lang(lang)
+    save_working_dir(branch)
+    copy_tasks_tests_from_repo(tasks, tests)
+    if working_dir_clean():
+        print(green("Tasks and tests already up-to-date"))
+        return False
+    working_dir_changed_diff(branch)
+    return True
+
+
+# --------------------------------------------------------------------------- #
+#  Оновлення цілих розділів
+# --------------------------------------------------------------------------- #
+def copy_chapters(dst_root: Path, chapters: Sequence[str]):
+    for chapter in chapters:
+        dst = dst_root / chapter
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(chapter, dst)
+
+
+def copy_chapters_from_repo(chapters: Sequence[str]):
+    cwd = Path().absolute()
+    clone_or_pull_task_repo()
+
+    src = Path.home() / TASKS_LOCAL_REPO / "exercises"
+    os.chdir(src)
+    copy_chapters(cwd, chapters)
+    print(green("\nUpdated chapters copied"))
+    os.chdir(cwd)
+
+
+def update_chapters_tasks_and_tests(
+    chapters: Sequence[str],
+    lang: str,
+    branch: str = "main",
+) -> bool:
+    change_tasks_lang(lang)
+    save_working_dir(branch)
+    copy_chapters_from_repo(chapters)
+    if working_dir_clean():
+        print(green("All chapters are up-to-date"))
+        return False
+    working_dir_changed_diff(branch)
+    return True
